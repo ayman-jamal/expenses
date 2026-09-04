@@ -1,0 +1,44 @@
+<!--
+  Masareef — the mark.
+
+  مصاريف ("expenses") begins with م (meem): a small round head with a long
+  tail that descends. Here the head is a struck coin — a disc with a rim
+  groove — and the meem's tail falls away beneath it and hooks left, the
+  direction an Arabic hand actually travels. Money going out.
+
+  Two details worth keeping if you edit this:
+   - The rim groove is broken at the lower left, exactly where the tail
+     leaves the coin. That gap is why the join reads as one continuous
+     gesture instead of a stroke crossing a ring.
+   - The tail is drawn first so the coin covers the join.
+
+  Edit this file, then run tools/render-icons.py to rebuild every PNG.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="masareef" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#5aa0f0"/>
+      <stop offset="1" stop-color="#2d6fc9"/>
+    </linearGradient>
+
+    <mask id="coin">
+      <rect width="512" height="512" fill="#000"/>
+      <circle cx="296" cy="158" r="110" fill="#fff"/>
+      <!-- Rim groove, open at the lower left where the tail runs out. -->
+      <path d="M221.8 188 A80 80 0 1 1 274 234.9"
+            fill="none" stroke="#000" stroke-width="16" stroke-linecap="round"/>
+    </mask>
+  </defs>
+
+  <!-- Tail first: the coin covers the join. -->
+  <path
+    d="M250 215
+       C234 270 226 316 214 356
+       C198 404 166 424 130 418"
+    fill="none"
+    stroke="url(#masareef)"
+    stroke-width="58"
+    stroke-linecap="round"/>
+
+  <rect width="512" height="512" fill="url(#masareef)" mask="url(#coin)"/>
+</svg>
