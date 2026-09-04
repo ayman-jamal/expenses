@@ -9,7 +9,7 @@ import React, {
   useState,
 } from 'react';
 import { AppState } from 'react-native';
-import { api, ApiError } from './api';
+import { api, ApiError, MIN_REMOVE_VERSION, RemoveTarget } from './api';
 import { uid } from './format';
 import { store } from './storage';
 import {
@@ -32,9 +32,12 @@ type Ctx = {
   favorites: Favorite[];
   refreshing: boolean;
   syncing: boolean;
+  removing: boolean;
   error: string | null;
 
   configured: boolean;
+  /** False until the deployed Code.gs is new enough to delete rows. */
+  canRemove: boolean;
   saveSettings: (patch: Partial<Settings>) => Promise<void>;
   addSheet: (label: string, url: string) => Promise<string>;
   updateSheet: (id: string, patch: Partial<SheetRef>) => Promise<void>;
@@ -45,6 +48,9 @@ type Ctx = {
   addEntry: (e: { date: string; category: string; cost: number; note: string }) => Promise<boolean>;
   flush: () => Promise<void>;
   discardPending: (clientId: string) => Promise<void>;
+  removeEntries: (
+    targets: RemoveTarget[]
+  ) => Promise<{ ok: true } | { ok: false; message: string }>;
 
   addFavorite: (f: Omit<Favorite, 'id'>) => Promise<void>;
   removeFavorite: (id: string) => Promise<void>;
@@ -67,6 +73,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const flushing = useRef(false);
@@ -121,6 +128,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const configured = !!(settings.scriptUrl && settings.token && activeSheet);
+  const canRemove = (snapshot?.scriptVersion ?? 0) >= MIN_REMOVE_VERSION;
 
   /* -------------------------- settings -------------------------- */
 
@@ -295,6 +303,76 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [flush]
   );
 
+  /**
+   * Deletions are never queued. Adding works offline because the phone is the
+   * only source of truth for a new row, so it can be replayed verbatim later.
+   * A deletion is the opposite: its whole safety model is verifying against
+   * the sheet's state at the moment of writing, and a delete queued for days
+   * would verify against something long stale. So this needs a connection.
+   */
+  const removeEntries = useCallback(
+    async (targets: RemoveTarget[]): Promise<{ ok: true } | { ok: false; message: string }> => {
+      const s = latest.current.settings;
+      const sheet = s.sheets.find((x) => x.id === s.activeSheetId);
+      if (!sheet || !s.scriptUrl || !s.token) {
+        return { ok: false, message: 'Not connected. Open Settings first.' };
+      }
+      if (!online) {
+        return {
+          ok: false,
+          message: 'Deleting needs a connection. Try again once you are back online.',
+        };
+      }
+      if (!targets.length) return { ok: true };
+
+      setRemoving(true);
+      try {
+        const res = await api.remove(s.scriptUrl, s.token, sheet.url, targets);
+        const prev = snapshots[sheet.id];
+
+        // Either way the script hands back a fresh read, so take it — after an
+        // abort it is exactly what the user needs to see to understand why.
+        if (prev && res.entries) {
+          await applySnapshot(sheet.id, {
+            ...prev,
+            ...(res.aborted
+              ? {}
+              : {
+                  buckets: res.buckets ?? prev.buckets,
+                  summary: res.summary ?? prev.summary,
+                  entryTab: res.entryTab ?? prev.entryTab,
+                }),
+            entries: res.entries,
+            fetchedAt: new Date().toISOString(),
+          });
+        } else if (!prev) {
+          await refresh();
+        }
+
+        if (res.aborted) {
+          const n = res.skipped.length;
+          const one = res.skipped[0];
+          return {
+            ok: false,
+            message:
+              n === 1 && one?.reason === 'mismatch'
+                ? `Row ${one.row} now reads "${one.found?.category} ${one.found?.cost}" — it changed in the sheet since your last refresh, so nothing was deleted. The list has been refreshed; check it and try again.`
+                : `${n} of the selected rows changed in the sheet since your last refresh, so nothing was deleted. The list has been refreshed; check it and try again.`,
+          };
+        }
+        return { ok: true };
+      } catch (e: any) {
+        return {
+          ok: false,
+          message: e instanceof ApiError ? e.message : String(e?.message || e),
+        };
+      } finally {
+        setRemoving(false);
+      }
+    },
+    [applySnapshot, online, refresh, snapshots]
+  );
+
   const discardPending = useCallback(async (clientId: string) => {
     setQueue((cur) => {
       const next = cur.filter((i) => i.clientId !== clientId);
@@ -332,8 +410,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     favorites,
     refreshing,
     syncing,
+    removing,
     error,
     configured,
+    canRemove,
     saveSettings,
     addSheet,
     updateSheet,
@@ -343,6 +423,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addEntry,
     flush,
     discardPending,
+    removeEntries,
     addFavorite,
     removeFavorite,
   };

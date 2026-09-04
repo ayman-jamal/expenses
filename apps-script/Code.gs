@@ -17,6 +17,15 @@
 
 var TOKEN = 'CHANGE_ME_TO_A_LONG_RANDOM_STRING';
 
+/**
+ * Bumped whenever the app needs a newer script than it might be talking to.
+ * The app reads this and hides features your deployment cannot serve yet,
+ * instead of failing halfway through with a confusing error.
+ *   3 -> ping/bootstrap/append
+ *   4 -> adds "remove" (deleting entries from the app)
+ */
+var SCRIPT_VERSION = 4;
+
 var HEADER_ALIASES = {
   date: ['date', 'التاريخ', 'تاريخ'],
   category: ['category', 'الفئة', 'التصنيف', 'البند'],
@@ -60,13 +69,16 @@ function route(req) {
     var action = String(req.action || 'ping');
 
     if (action === 'ping') {
-      return ok({ pong: true, version: 3, user: safeUser() });
+      return ok({ pong: true, version: SCRIPT_VERSION, user: safeUser() });
     }
     if (action === 'bootstrap') {
       return ok(bootstrap(req));
     }
     if (action === 'append') {
       return ok(append(req));
+    }
+    if (action === 'remove') {
+      return ok(remove(req));
     }
     return fail('Unknown action: ' + action);
   } catch (err) {
@@ -109,6 +121,7 @@ function bootstrap(req) {
   var summary = readSummary(ss);
 
   return {
+    scriptVersion: SCRIPT_VERSION,
     spreadsheetId: ss.getId(),
     spreadsheetTitle: ss.getName(),
     entryTab: entryTab.sheet.getName(),
@@ -190,6 +203,154 @@ function append(req) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * Blanks the Date/Category/Cost/Note cells of the requested rows.
+ *
+ * It deliberately does NOT delete or shift rows. Your summary formulas sit in
+ * G/H/J on these same rows, and any row delete would drag them up out of line
+ * with their labels. The cost of leaving your layout alone is a blank gap in
+ * the entry list, which the reader already skips over.
+ *
+ * Request: { sheetUrl, tabName, rows: [{ row, category, cost }, ...] }
+ *
+ * Verify-all-then-write-all: if any requested row no longer holds what the
+ * phone last saw, NOTHING is written. A mismatch means the phone's snapshot is
+ * stale, which makes every row number in the batch suspect — not just the one
+ * that failed. Deleting the "good" ones under a stale mapping is exactly how
+ * the wrong expense gets erased.
+ */
+function remove(req) {
+  var items = req.rows || [];
+  if (!items.length) return { removed: [], skipped: [], aborted: false };
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    var ss = openSheet(req.sheetUrl);
+    var entryTab = findEntryTab(ss, req.tabName);
+    var sheet = entryTab.sheet;
+    var col = entryTab.columns;
+
+    // Read through the same function that built the phone's list, inside the
+    // lock, so verification can never disagree with what the user was shown.
+    var entries = readEntries(entryTab);
+    var byRow = {};
+    for (var i = 0; i < entries.length; i++) byRow[entries[i].row] = entries[i];
+
+    /* ---- 1. verify every requested row before touching any of them ---- */
+    var skipped = [];
+    var targeted = {};
+
+    for (var k = 0; k < items.length; k++) {
+      var it = items[k] || {};
+      var row = Number(it.row);
+      var e = byRow[row];
+
+      if (!row || !e) {
+        skipped.push({ row: row || null, reason: 'not_found' });
+        continue;
+      }
+
+      var wantCost = Number(it.cost);
+      var costOk = isNaN(wantCost) || Math.abs(e.cost - wantCost) < 0.0005;
+      var categoryOk = normCategory(e.category) === normCategory(it.category);
+
+      if (!categoryOk || !costOk) {
+        skipped.push({
+          row: row,
+          reason: 'mismatch',
+          expected: { category: String(it.category || ''), cost: wantCost },
+          found: { category: e.category, cost: e.cost }
+        });
+        continue;
+      }
+      targeted[row] = true;
+    }
+
+    if (skipped.length) {
+      return {
+        removed: [],
+        skipped: skipped,
+        aborted: true,
+        entryTab: sheet.getName(),
+        buckets: readBuckets(ss, entryTab),
+        summary: readSummary(ss),
+        entries: entries
+      };
+    }
+
+    /* ---- 2. re-anchor dates that other rows are inheriting ---- */
+    // Your sheet leaves the date blank on repeat days, and the reader inherits
+    // the date from the row above. Blanking a row that OWNS a date would
+    // silently re-date everything below it that was inheriting from it. So
+    // walk down and, whenever a doomed date has a surviving inheritor, write
+    // the date into that inheritor first. `entries` already excludes blank
+    // rows, which is exactly the chain the reader follows.
+    var carry = null;
+    var dateWrites = [];
+
+    for (var d = 0; d < entries.length; d++) {
+      var row2 = entries[d].row;
+      var doomed = !!targeted[row2];
+
+      if (entries[d].dateExplicit) {
+        // A date lives here. Only worth carrying if it is about to be erased.
+        carry = doomed ? entries[d].date : null;
+      } else if (!doomed && carry) {
+        // First survivor inheriting the doomed date — make it explicit here.
+        dateWrites.push({ row: row2, iso: carry });
+        carry = null;
+      }
+      // doomed && !dateExplicit: also going away, so keep carrying.
+    }
+
+    for (var w = 0; w < dateWrites.length; w++) {
+      var parsedDate = parseDate(dateWrites[w].iso);
+      if (parsedDate) sheet.getRange(dateWrites[w].row, col.date).setValue(parsedDate);
+    }
+
+    /* ---- 3. clear the four entry cells, one by one ---- */
+    // Never a blanket getRange(row, 1, 1, maxCol): any unrelated column that
+    // happens to sit between the entry columns must survive untouched.
+    var removed = [];
+    for (var r in targeted) removed.push(Number(r));
+    removed.sort(function (a, b) {
+      return a - b;
+    });
+
+    for (var q = 0; q < removed.length; q++) {
+      if (col.date) sheet.getRange(removed[q], col.date).clearContent();
+      if (col.category) sheet.getRange(removed[q], col.category).clearContent();
+      if (col.cost) sheet.getRange(removed[q], col.cost).clearContent();
+      if (col.note) sheet.getRange(removed[q], col.note).clearContent();
+    }
+
+    SpreadsheetApp.flush();
+
+    return {
+      removed: removed,
+      skipped: [],
+      aborted: false,
+      entryTab: sheet.getName(),
+      buckets: readBuckets(ss, entryTab),
+      summary: readSummary(ss),
+      entries: readEntries(entryTab)
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Categories are often Arabic, and the same word can arrive in different
+ * Unicode normalisations from a keyboard versus a paste. Compare them folded,
+ * so a visually identical category never reads as a mismatch.
+ */
+function normCategory(value) {
+  var s = String(value == null ? '' : value).trim().toLowerCase();
+  return typeof s.normalize === 'function' ? s.normalize('NFC') : s;
 }
 
 /* ========================= SHEET DISCOVERY ======================== */

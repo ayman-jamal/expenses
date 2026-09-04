@@ -2,6 +2,26 @@ import { Pending, Snapshot } from './types';
 
 export class ApiError extends Error {}
 
+/** The Code.gs version that first understood `remove`. */
+export const MIN_REMOVE_VERSION = 4;
+
+export type RemoveTarget = { row: number; category: string; cost: number };
+
+export type RemoveResult = {
+  removed: number[];
+  skipped: {
+    row: number | null;
+    reason: 'not_found' | 'mismatch';
+    expected?: { category: string; cost: number };
+    found?: { category: string; cost: number };
+  }[];
+  aborted: boolean;
+  entryTab?: string;
+  buckets?: Snapshot['buckets'];
+  summary?: Snapshot['summary'];
+  entries?: Snapshot['entries'];
+};
+
 type CallOptions = { timeoutMs?: number };
 
 /**
@@ -59,7 +79,17 @@ async function call<T>(
     throw new ApiError('Unreadable answer from the script: ' + text.slice(0, 120));
   }
 
-  if (!parsed.ok) throw new ApiError(parsed.error || 'The script reported an error.');
+  if (!parsed.ok) {
+    const err = String(parsed.error || 'The script reported an error.');
+    // An older deployment answers anything it doesn't know with this. Say what
+    // to do about it rather than passing "Unknown action: remove" to the user.
+    if (/^unknown action/i.test(err)) {
+      throw new ApiError(
+        'Your Apps Script is an older version and cannot do this yet. Paste the current Code.gs in, then Deploy → Manage deployments → edit → Version: New version. The /exec URL stays the same.'
+      );
+    }
+    throw new ApiError(err);
+  }
   return parsed as T;
 }
 
@@ -97,4 +127,13 @@ export const api = {
         note: e.note,
       })),
     }),
+
+  remove: (
+    scriptUrl: string,
+    token: string,
+    sheetUrl: string,
+    rows: RemoveTarget[],
+    tabName?: string
+  ) =>
+    call<RemoveResult>(scriptUrl, { token, action: 'remove', sheetUrl, tabName, rows }),
 };

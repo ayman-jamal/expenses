@@ -35,6 +35,8 @@ export type Snapshot = {
   summary: Summary;
   entries: Entry[];
   fetchedAt: string;
+  /** Absent on deployments older than v4, and on snapshots cached before it. */
+  scriptVersion?: number;
 };
 
 /** A month's spreadsheet, as the user pasted it in. */

@@ -7,7 +7,8 @@ change a single formula.
 
 - **Add** — amount, category, date, note → one tap, straight into the sheet
 - **Budget** — live buckets from your BUCKETS tab, with over-budget flags
-- **History** — every row in the month tab, newest first, plus anything queued
+- **History** — every row in the month tab, newest first, plus anything queued.
+  Hold a row to select it (and any others) and delete it from the sheet
 - **Analysis** — where the money goes, day by day, budget vs actual
 - **Offline** — entries are queued on the phone and pushed when signal returns
 
@@ -99,6 +100,8 @@ In the app's **Settings** tab:
 | Formatting | New rows inherit the formatting of the row above, so dates and numbers keep looking the way they do now. |
 | Concurrent writes | A script lock serialises appends, so two phones (or a retry) can't land on the same row. |
 | Blank date rows | Your sheet leaves the date blank on repeat days; the reader inherits the previous row's date rather than dropping the entry. |
+| Deleting an entry | Only the four entry cells are cleared. **No row is ever deleted or shifted**, so the totals in G/H/J never move — the price is a blank gap in the list, which the reader skips. Before clearing a row that owns a date, the date is written into the next row that was inheriting it, so nothing below silently changes date. |
+| Deleting the wrong row | Row numbers on the phone can be stale. Every row is re-read and matched against what the app last saw (category, and cost to within 0.0005) *before* anything is written. One mismatch aborts the whole batch — a stale snapshot makes every row number in it suspect, not just that one. |
 
 ## Adding a new month
 
@@ -130,4 +133,6 @@ src/theme.ts               colours (validated for colour-blind separation)
 | "No tab with Date / Category / Cost headers" | The month tab's header row must contain those three words. |
 | Entries stuck in the queue | Settings → **Sync now**. The badge on the History tab shows how many are waiting. |
 | Changed the script after deploying | Deploy → **Manage deployments** → edit → Version: **New version**. The `/exec` URL stays the same. |
+| "Your Apps Script is an older version" / holding a row won't select it | Deleting needs `Code.gs` v4 or newer. Paste the current one in and redeploy as a **New version** (row above). |
+| "…changed in the sheet since your last refresh" | Someone edited that row after the app last read it, so nothing was deleted. The list refreshes itself — check it and try again. |
 # expenses
