@@ -76,6 +76,12 @@ export const Button = ({
   );
 };
 
+/**
+ * `compact` shrinks the chip so a full category list fits on one screen. The
+ * hitSlop puts the touch target back to ~40px; 4px top/bottom is deliberate —
+ * it exactly consumes `Wrap`'s 8px row gap, so chips on adjacent rows never
+ * overlap each other's target and steal taps.
+ */
 export const Chip = ({
   label,
   selected,
@@ -83,6 +89,7 @@ export const Chip = ({
   onLongPress,
   color,
   sub,
+  compact,
 }: {
   label: string;
   selected?: boolean;
@@ -90,14 +97,17 @@ export const Chip = ({
   onLongPress?: () => void;
   color?: string;
   sub?: string;
+  compact?: boolean;
 }) => (
   <Pressable
     accessibilityRole="button"
     accessibilityState={{ selected: !!selected }}
     onPress={onPress}
     onLongPress={onLongPress}
+    hitSlop={compact ? { top: 4, bottom: 4, left: 2, right: 2 } : undefined}
     style={({ pressed }) => [
       st.chip,
+      compact && st.chipCompact,
       {
         backgroundColor: selected ? C.accentSoft : C.surfaceAlt,
         borderColor: selected ? C.accent : C.border,
@@ -105,8 +115,13 @@ export const Chip = ({
       },
     ]}
   >
-    {color ? <View style={[st.dot, { backgroundColor: color }]} /> : null}
-    <Text style={[st.chipText, { color: selected ? C.text : C.textDim }]} numberOfLines={1}>
+    {color ? (
+      <View style={[st.dot, compact && st.dotCompact, { backgroundColor: color }]} />
+    ) : null}
+    <Text
+      style={[st.chipText, compact && st.chipTextCompact, { color: selected ? C.text : C.textDim }]}
+      numberOfLines={1}
+    >
       {label}
     </Text>
     {sub ? <Text style={st.chipSub}>{sub}</Text> : null}
@@ -269,9 +284,12 @@ const st = StyleSheet.create({
     paddingVertical: 9,
     paddingHorizontal: 14,
   },
+  chipCompact: { gap: 5, paddingVertical: 6, paddingHorizontal: 11 },
   chipText: { fontSize: 14, fontWeight: '500' },
+  chipTextCompact: { fontSize: 13 },
   chipSub: { fontSize: 12, color: C.textMuted, ...F.mono },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  dotCompact: { width: 7, height: 7, borderRadius: 3.5 },
   label: { ...F.small, marginBottom: 6, color: C.textDim },
   hint: { ...F.small, marginTop: 5 },
   input: {

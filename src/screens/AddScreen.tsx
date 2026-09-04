@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Banner, Button, Card, Chip, HScroll, Row, SectionTitle } from '../components/ui';
+import { Banner, Button, Card, Chip, HScroll, Row, SectionTitle, Wrap } from '../components/ui';
 import { useApp } from '../lib/AppContext';
 import { fromISO, isRTL, money, prettyDate, todayISO, toISO } from '../lib/format';
 import { C, F, S, seriesColor } from '../theme';
@@ -62,15 +62,6 @@ export default function AddScreen({ goSettings }: { goSettings: () => void }) {
     const i = categories.findIndex((c) => c.name === name);
     return seriesColor(i % 6);
   };
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, typeof categories>();
-    categories.forEach((c) => {
-      const key = c.bucket || 'Other categories';
-      map.set(key, [...(map.get(key) || []), c]);
-    });
-    return Array.from(map.entries());
-  }, [categories]);
 
   const value = Number(String(amount).replace(',', '.'));
   const valid = !!category && isFinite(value) && value > 0;
@@ -189,25 +180,21 @@ export default function AddScreen({ goSettings }: { goSettings: () => void }) {
         </Card>
 
         <SectionTitle title="Category" />
-        {grouped.map(([bucket, items]) => (
-          <View key={bucket} style={{ marginBottom: S.md }}>
-            <Text style={st.groupLabel}>{bucket}</Text>
-            <View style={st.chipWrap}>
-              {items.map((c) => (
-                <Chip
-                  key={c.name}
-                  label={c.name}
-                  color={colorFor(c.name)}
-                  selected={category === c.name}
-                  onPress={() => {
-                    setCategory(c.name);
-                    void Haptics.selectionAsync();
-                  }}
-                />
-              ))}
-            </View>
-          </View>
-        ))}
+        <Wrap>
+          {categories.map((c) => (
+            <Chip
+              key={c.name}
+              label={c.name}
+              color={colorFor(c.name)}
+              compact
+              selected={category === c.name}
+              onPress={() => {
+                setCategory(c.name);
+                void Haptics.selectionAsync();
+              }}
+            />
+          ))}
+        </Wrap>
 
         <SectionTitle title="Note" />
         <TextInput
@@ -249,16 +236,19 @@ export default function AddScreen({ goSettings }: { goSettings: () => void }) {
         ) : null}
 
         <View style={{ height: S.lg }} />
-        <Button label="Save to sheet" onPress={() => submit()} disabled={!valid} />
         <Button
           label="Save this as a quick-add"
           variant="ghost"
           onPress={saveFavorite}
           disabled={!valid}
-          style={{ marginTop: S.sm }}
         />
-        <View style={{ height: 40 }} />
+        <View style={{ height: S.lg }} />
       </ScrollView>
+
+      {/* Pinned: recording an expense should never cost a scroll. */}
+      <View style={st.footer}>
+        <Button label="Save to sheet" onPress={() => submit()} disabled={!valid} />
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -337,8 +327,13 @@ const st = StyleSheet.create({
     paddingHorizontal: 14,
     backgroundColor: C.surfaceAlt,
   },
-  groupLabel: { ...F.small, marginBottom: S.sm, textTransform: 'uppercase', letterSpacing: 0.6 },
-  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
+  footer: {
+    padding: S.lg,
+    paddingTop: S.md,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    backgroundColor: C.bg,
+  },
   note: {
     backgroundColor: C.surface,
     borderWidth: 1,
