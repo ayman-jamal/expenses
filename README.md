@@ -10,6 +10,8 @@ change a single formula.
 - **History** — every row in the month tab, newest first, plus anything queued.
   Hold a row to select it (and any others) and delete it from the sheet
 - **Analysis** — where the money goes, day by day, budget vs actual
+- **Cons** — fuel consumption for the month: km/L, km driven, liters, cost and
+  cost per km at each refill, straight from the sheet's `Cons` column
 - **Offline** — entries are queued on the phone and pushed when signal returns
 
 ---
@@ -102,6 +104,21 @@ In the app's **Settings** tab:
 | Blank date rows | Your sheet leaves the date blank on repeat days; the reader inherits the previous row's date rather than dropping the entry. |
 | Deleting an entry | Only the four entry cells are cleared. **No row is ever deleted or shifted**, so the totals in G/H/J never move — the price is a blank gap in the list, which the reader skips. Before clearing a row that owns a date, the date is written into the next row that was inheriting it, so nothing below silently changes date. |
 | Deleting the wrong row | Row numbers on the phone can be stale. Every row is re-read and matched against what the app last saw (category, and cost to within 0.0005) *before* anything is written. One mismatch aborts the whole batch — a stale snapshot makes every row number in it suspect, not just that one. |
+
+## Fuel refills
+
+A refill is a `Transportation` row whose note reads `liters, km` — e.g. `15, 366`
+for 15 liters after 366 km since the previous refill. The month tab's `Cons`
+column (E) turns that into km/L with its own formula; the app reads that column
+for the Cons tab.
+
+On the Add screen, picking Transportation shows **Liters** and **Km since last
+refill** fields that write the note for you. Leave both empty for a
+Transportation expense that isn't a refill.
+
+The script writes notes as plain text so Sheets can't turn `15,366` into the
+number 15366, and copies the Cons formula onto new rows that don't have it yet.
+This needs `Code.gs` v5 — redeploy as a **New version** after updating.
 
 ## Adding a new month
 

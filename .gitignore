@@ -10,3 +10,5 @@ npm-debug.*
 *.key
 *.mobileprovision
 .DS_Store
+# Sheet exports hold personal spending data.
+*.xlsx

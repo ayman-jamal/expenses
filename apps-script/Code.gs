@@ -23,14 +23,17 @@ var TOKEN = 'CHANGE_ME_TO_A_LONG_RANDOM_STRING';
  * instead of failing halfway through with a confusing error.
  *   3 -> ping/bootstrap/append
  *   4 -> adds "remove" (deleting entries from the app)
+ *   5 -> reads the optional Cons column, keeps fuel notes as literal text
  */
-var SCRIPT_VERSION = 4;
+var SCRIPT_VERSION = 5;
 
 var HEADER_ALIASES = {
   date: ['date', 'التاريخ', 'تاريخ'],
   category: ['category', 'الفئة', 'التصنيف', 'البند'],
   cost: ['cost', 'amount', 'value', 'المبلغ', 'التكلفة'],
-  note: ['note', 'notes', 'comment', 'ملاحظة', 'ملاحظات', 'البيان']
+  note: ['note', 'notes', 'comment', 'ملاحظة', 'ملاحظات', 'البيان'],
+  // Optional. Your sheet's own formula fills it from a "liters, km" note.
+  cons: ['cons', 'consumption', 'km/l', 'الاستهلاك', 'استهلاك']
 };
 
 var MAX_ENTRIES_RETURNED = 600;
@@ -170,6 +173,8 @@ function append(req) {
         );
     }
 
+    var consSource = findConsFormulaRow(entryTab, startRow);
+
     var written = [];
     for (var i = 0; i < items.length; i++) {
       var it = items[i] || {};
@@ -184,7 +189,15 @@ function append(req) {
       sheet.getRange(row, col.cost).setValue(isNaN(amount) ? '' : amount);
 
       var note = it.note == null ? '' : String(it.note);
-      if (note !== '' && col.note) sheet.getRange(row, col.note).setValue(note);
+      if (note !== '' && col.note) {
+        // Plain text, always. Otherwise Sheets turns a fuel note like "15,366"
+        // into the number 15366 and the Cons formula can no longer split it.
+        var noteCell = sheet.getRange(row, col.note);
+        noteCell.setNumberFormat('@');
+        noteCell.setValue(note);
+      }
+
+      carryConsFormula(entryTab, consSource, row);
 
       written.push({ clientId: it.clientId || null, row: row });
     }
@@ -344,6 +357,32 @@ function remove(req) {
 }
 
 /**
+ * The Cons formulas are pre-filled only so far down the sheet. Find the
+ * nearest row above `beforeRow` that has one, so appended rows can get a copy.
+ */
+function findConsFormulaRow(entryTab, beforeRow) {
+  var c = entryTab.columns.cons;
+  var first = entryTab.headerRow + 1;
+  if (!c || beforeRow <= first) return null;
+  var formulas = entryTab.sheet.getRange(first, c, beforeRow - first, 1).getFormulas();
+  for (var i = formulas.length - 1; i >= 0; i--) {
+    if (formulas[i][0]) return first + i;
+  }
+  return null;
+}
+
+/** Copies the Cons formula onto `row`, unless that cell already holds something. */
+function carryConsFormula(entryTab, sourceRow, row) {
+  var c = entryTab.columns.cons;
+  if (!c || !sourceRow) return;
+  var target = entryTab.sheet.getRange(row, c);
+  if (target.getFormula() || target.getValue() !== '') return;
+  entryTab.sheet
+    .getRange(sourceRow, c)
+    .copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+}
+
+/**
  * Categories are often Arabic, and the same word can arrive in different
  * Unicode normalisations from a keyboard versus a paste. Compare them folded,
  * so a visually identical category never reads as a mismatch.
@@ -408,7 +447,9 @@ function findEntryTab(ss, preferredName) {
 
 function detectHeader(sheet) {
   var name = sheet.getName();
-  if (/^buckets$/i.test(name) || /^analysis$/i.test(name)) return null;
+  // "analysis" anywhere in the name: a "for analysis" tab mirrors the entry
+  // columns with formulas, and appending there would overwrite them.
+  if (/^buckets$/i.test(name) || /analysis/i.test(name)) return null;
 
   var scanRows = Math.min(5, sheet.getMaxRows());
   var scanCols = Math.min(12, sheet.getMaxColumns());
@@ -417,7 +458,7 @@ function detectHeader(sheet) {
   var values = sheet.getRange(1, 1, scanRows, scanCols).getValues();
 
   for (var r = 0; r < values.length; r++) {
-    var cols = { date: 0, category: 0, cost: 0, note: 0 };
+    var cols = { date: 0, category: 0, cost: 0, note: 0, cons: 0 };
     for (var c = 0; c < values[r].length; c++) {
       var label = String(values[r][c] || '').trim().toLowerCase();
       if (!label) continue;
@@ -467,7 +508,12 @@ function readEntries(entryTab) {
   var first = entryTab.headerRow + 1;
   if (last < first) return [];
 
-  var values = sheet.getRange(first, 1, last - first + 1, maxCol).getValues();
+  // lastUsedRow stays on the entry columns only: the Cons formulas run further
+  // down than the data, and must not count as used rows.
+  var n = last - first + 1;
+  var values = sheet.getRange(first, 1, n, Math.max(maxCol, col.cons || 0)).getValues();
+  // Notes as displayed: a typed "15,366" is stored as the number 15366.
+  var notes = col.note ? sheet.getRange(first, col.note, n, 1).getDisplayValues() : null;
   var out = [];
   var lastDate = null;
 
@@ -476,7 +522,8 @@ function readEntries(entryTab) {
     var rawDate = col.date ? row[col.date - 1] : '';
     var category = col.category ? String(row[col.category - 1] || '').trim() : '';
     var cost = col.cost ? row[col.cost - 1] : '';
-    var note = col.note ? String(row[col.note - 1] || '') : '';
+    var note = notes ? String(notes[i][0] || '') : '';
+    var cons = col.cons ? row[col.cons - 1] : '';
 
     if (!category && (cost === '' || cost === null) && !note) continue;
 
@@ -501,7 +548,8 @@ function readEntries(entryTab) {
       dateExplicit: !!rawDate,
       category: category,
       cost: typeof cost === 'number' ? cost : Number(cost) || 0,
-      note: note
+      note: note,
+      cons: typeof cons === 'number' && isFinite(cons) && cons > 0 ? cons : null
     });
   }
 

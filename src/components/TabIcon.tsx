@@ -1,7 +1,7 @@
 import React from 'react';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 
-export type TabName = 'add' | 'budget' | 'history' | 'analysis' | 'settings';
+export type TabName = 'add' | 'budget' | 'history' | 'analysis' | 'cons' | 'settings';
 
 /** Small geometric icons drawn inline — no icon font to load. */
 export default function TabIcon({
@@ -45,6 +45,13 @@ export default function TabIcon({
           <Line x1={5} y1={19} x2={5} y2={12} {...p} />
           <Line x1={12} y1={19} x2={12} y2={6} {...p} />
           <Line x1={19} y1={19} x2={19} y2={15} {...p} />
+        </Svg>
+      );
+    case 'cons':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Path d="M12 3.5c3 3.8 6 7.2 6 10.5a6 6 0 0 1-12 0c0-3.3 3-6.7 6-10.5z" {...p} />
+          <Path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5" {...p} />
         </Svg>
       );
     case 'settings':

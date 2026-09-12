@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -61,20 +62,33 @@ export const Button = ({
       accessibilityLabel={label}
       onPress={onPress}
       disabled={disabled || loading}
-      style={({ pressed }) => [
+      hitSlop={6}
+      android_ripple={RIPPLE}
+      // Static on purpose. Restyling the Pressable itself on press (the old
+      // pressed-opacity) cancels presses that land on its padding on Android,
+      // leaving only the label tappable. Press feedback lives below instead.
+      style={[
         st.btn,
-        { backgroundColor: bg, borderColor: border, opacity: disabled ? 0.4 : pressed ? 0.75 : 1 },
+        { backgroundColor: bg, borderColor: border, opacity: disabled ? 0.4 : 1 },
         style,
       ]}
     >
-      {loading ? (
-        <ActivityIndicator color={fg} size="small" />
-      ) : (
-        <Text style={[st.btnText, { color: fg }]}>{label}</Text>
+      {({ pressed }) => (
+        <View style={[st.btnInner, IOS_FADE && pressed && st.pressedFade]}>
+          {loading ? (
+            <ActivityIndicator color={fg} size="small" />
+          ) : (
+            <Text style={[st.btnText, { color: fg }]}>{label}</Text>
+          )}
+        </View>
       )}
     </Pressable>
   );
 };
+
+/** Android gets a native ripple; iOS fades the content, never the Pressable. */
+const RIPPLE = { color: 'rgba(255,255,255,0.12)', foreground: true };
+const IOS_FADE = Platform.OS === 'ios';
 
 /**
  * `compact` shrinks the chip so a full category list fits on one screen. The
@@ -105,26 +119,37 @@ export const Chip = ({
     onPress={onPress}
     onLongPress={onLongPress}
     hitSlop={compact ? { top: 4, bottom: 4, left: 2, right: 2 } : undefined}
-    style={({ pressed }) => [
+    android_ripple={RIPPLE}
+    // Static for the same reason as Button: no restyling the Pressable mid-press.
+    style={[
       st.chip,
       compact && st.chipCompact,
       {
         backgroundColor: selected ? C.accentSoft : C.surfaceAlt,
         borderColor: selected ? C.accent : C.border,
-        opacity: pressed ? 0.7 : 1,
       },
     ]}
   >
-    {color ? (
-      <View style={[st.dot, compact && st.dotCompact, { backgroundColor: color }]} />
-    ) : null}
-    <Text
-      style={[st.chipText, compact && st.chipTextCompact, { color: selected ? C.text : C.textDim }]}
-      numberOfLines={1}
-    >
-      {label}
-    </Text>
-    {sub ? <Text style={st.chipSub}>{sub}</Text> : null}
+    {({ pressed }) => (
+      <View
+        style={[st.chipRow, compact && st.chipRowCompact, IOS_FADE && pressed && st.pressedFade]}
+      >
+        {color ? (
+          <View style={[st.dot, compact && st.dotCompact, { backgroundColor: color }]} />
+        ) : null}
+        <Text
+          style={[
+            st.chipText,
+            compact && st.chipTextCompact,
+            { color: selected ? C.text : C.textDim },
+          ]}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+        {sub ? <Text style={st.chipSub}>{sub}</Text> : null}
+      </View>
+    )}
   </Pressable>
 );
 
@@ -273,18 +298,21 @@ const st = StyleSheet.create({
     paddingHorizontal: S.lg,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  btnInner: { alignItems: 'center', justifyContent: 'center' },
+  pressedFade: { opacity: 0.7 },
   btnText: { fontSize: 15, fontWeight: '600' },
   chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
     borderRadius: 999,
     borderWidth: 1,
     paddingVertical: 9,
     paddingHorizontal: 14,
+    overflow: 'hidden',
   },
-  chipCompact: { gap: 5, paddingVertical: 6, paddingHorizontal: 11 },
+  chipCompact: { paddingVertical: 6, paddingHorizontal: 11 },
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chipRowCompact: { gap: 5 },
   chipText: { fontSize: 14, fontWeight: '500' },
   chipTextCompact: { fontSize: 13 },
   chipSub: { fontSize: 12, color: C.textMuted, ...F.mono },

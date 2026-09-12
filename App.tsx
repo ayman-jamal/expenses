@@ -10,6 +10,7 @@ import { AppProvider, useApp } from './src/lib/AppContext';
 import AddScreen from './src/screens/AddScreen';
 import AnalysisScreen from './src/screens/AnalysisScreen';
 import BudgetScreen from './src/screens/BudgetScreen';
+import ConsScreen from './src/screens/ConsScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import { C, F } from './src/theme';
@@ -19,6 +20,7 @@ const TABS: { key: TabName; label: string }[] = [
   { key: 'budget', label: 'Budget' },
   { key: 'history', label: 'History' },
   { key: 'analysis', label: 'Analysis' },
+  { key: 'cons', label: 'Cons' },
   { key: 'settings', label: 'Settings' },
 ];
 
@@ -42,6 +44,7 @@ function Shell() {
         {tab === 'budget' && <BudgetScreen />}
         {tab === 'history' && <HistoryScreen />}
         {tab === 'analysis' && <AnalysisScreen />}
+        {tab === 'cons' && <ConsScreen />}
         {tab === 'settings' && <SettingsScreen />}
       </View>
 

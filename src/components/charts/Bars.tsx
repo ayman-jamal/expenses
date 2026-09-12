@@ -28,6 +28,7 @@ export default function Bars({
   currency,
   color = C.accent,
   everyNthLabel,
+  format,
 }: {
   data: Bar[];
   width: number;
@@ -35,6 +36,8 @@ export default function Bars({
   currency: string;
   color?: string;
   everyNthLabel?: number;
+  /** Readout formatting for non-money values, e.g. liters or km. */
+  format?: (v: number) => string;
 }) {
   const [active, setActive] = useState<number | null>(null);
 
@@ -69,7 +72,9 @@ export default function Bars({
         <Text style={st.readoutLabel}>
           {shown ? shown.sub || shown.label : 'Tap a bar for detail'}
         </Text>
-        <Text style={st.readoutValue}>{shown ? money(shown.value, currency) : ' '}</Text>
+        <Text style={st.readoutValue}>
+          {shown ? (format ? format(shown.value) : money(shown.value, currency)) : ' '}
+        </Text>
       </View>
 
       <Svg width={width} height={height}>

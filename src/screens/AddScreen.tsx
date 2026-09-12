@@ -15,6 +15,7 @@ import {
 import { Banner, Button, Card, Chip, HScroll, Row, SectionTitle, Wrap } from '../components/ui';
 import { useApp } from '../lib/AppContext';
 import { fromISO, isRTL, money, prettyDate, todayISO, toISO } from '../lib/format';
+import { formatFuelNote, isFuelCategory } from '../lib/fuel';
 import { C, F, S, seriesColor } from '../theme';
 
 const FALLBACK_CATEGORIES = [
@@ -52,6 +53,8 @@ export default function AddScreen({ goSettings }: { goSettings: () => void }) {
   const [date, setDate] = useState(todayISO());
   const [showPicker, setShowPicker] = useState(false);
   const [justSaved, setJustSaved] = useState<string | null>(null);
+  const [liters, setLiters] = useState('');
+  const [km, setKm] = useState('');
 
   const categories = useMemo(() => {
     if (snapshot?.categories?.length) return snapshot.categories;
@@ -64,19 +67,41 @@ export default function AddScreen({ goSettings }: { goSettings: () => void }) {
   };
 
   const value = Number(String(amount).replace(',', '.'));
-  const valid = !!category && isFinite(value) && value > 0;
+
+  /* ---- fuel refill: liters + km become the "liters, km" note the Cons column reads ---- */
+  const fuel = isFuelCategory(category);
+  const litersVal = Number(liters.replace(',', '.'));
+  const kmVal = Number(km.replace(',', '.'));
+  const hasReading = fuel && litersVal > 0 && kmVal > 0;
+  const readingIncomplete = fuel && (liters.trim() !== '' || km.trim() !== '') && !hasReading;
+
+  const valid = !!category && isFinite(value) && value > 0 && !readingIncomplete;
+
+  const clearReading = () => {
+    setLiters('');
+    setKm('');
+  };
 
   const reset = () => {
     setAmount('');
     setNote('');
     setCategory(null);
     setDate(todayISO());
+    clearReading();
   };
 
   const submit = async (payload?: { category: string; cost: number; note?: string }) => {
+    const typed = note.trim();
     const entry = payload
       ? { date, category: payload.category, cost: payload.cost, note: payload.note || '' }
-      : { date, category: category!, cost: value, note: note.trim() };
+      : {
+          date,
+          category: category!,
+          cost: value,
+          note: hasReading
+            ? [formatFuelNote(litersVal, kmVal), typed].filter(Boolean).join(' ')
+            : typed,
+        };
 
     const okToSave = await addEntry(entry);
     if (!okToSave) {
@@ -190,11 +215,55 @@ export default function AddScreen({ goSettings }: { goSettings: () => void }) {
               selected={category === c.name}
               onPress={() => {
                 setCategory(c.name);
+                if (!isFuelCategory(c.name)) clearReading();
                 void Haptics.selectionAsync();
               }}
             />
           ))}
         </Wrap>
+
+        {fuel ? (
+          <Card style={{ marginTop: S.md }}>
+            <Text style={F.small}>Fuel refill — optional</Text>
+            <Row style={{ gap: S.sm, marginTop: S.sm }}>
+              <View style={{ flex: 1 }}>
+                <Text style={st.fuelLabel}>Liters</Text>
+                <TextInput
+                  value={liters}
+                  onChangeText={setLiters}
+                  placeholder="0"
+                  placeholderTextColor={C.textMuted}
+                  keyboardType="decimal-pad"
+                  style={st.fuelInput}
+                  accessibilityLabel="Liters"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={st.fuelLabel}>Km since last refill</Text>
+                <TextInput
+                  value={km}
+                  onChangeText={setKm}
+                  placeholder="0"
+                  placeholderTextColor={C.textMuted}
+                  keyboardType="decimal-pad"
+                  style={st.fuelInput}
+                  accessibilityLabel="Kilometers since last refill"
+                />
+              </View>
+            </Row>
+            <Text
+              style={[F.small, { marginTop: S.sm }, readingIncomplete && { color: C.warning }]}
+            >
+              {hasReading
+                ? `≈ ${(kmVal / litersVal).toFixed(1)} km/L${
+                    value > 0 ? ` · ${(value / kmVal).toFixed(3)} ${settings.currency}/km` : ''
+                  }`
+                : readingIncomplete
+                ? 'Fill in both liters and km, or leave both empty.'
+                : 'Saved to the note as "liters, km" — the sheet\'s Cons column does the rest.'}
+            </Text>
+          </Card>
+        ) : null}
 
         <SectionTitle title="Note" />
         <TextInput
@@ -218,6 +287,7 @@ export default function AddScreen({ goSettings }: { goSettings: () => void }) {
                   sub={f.cost != null ? money(f.cost, '') : undefined}
                   onPress={() => {
                     setCategory(f.category);
+                    if (!isFuelCategory(f.category)) clearReading();
                     if (f.cost != null) setAmount(String(f.cost));
                     if (f.note) setNote(f.note);
                     void Haptics.selectionAsync();
@@ -319,6 +389,18 @@ const st = StyleSheet.create({
     paddingVertical: 4,
   },
   currency: { color: C.textMuted, fontSize: 18, fontWeight: '600' },
+  fuelLabel: { ...F.small, marginBottom: 4 },
+  fuelInput: {
+    backgroundColor: C.surfaceAlt,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: S.radiusSm,
+    paddingHorizontal: S.md,
+    paddingVertical: 10,
+    color: C.text,
+    fontSize: 17,
+    fontWeight: '600',
+  },
   dateBtn: {
     borderWidth: 1,
     borderColor: C.border,

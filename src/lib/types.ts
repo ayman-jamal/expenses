@@ -15,6 +15,8 @@ export type Entry = {
   category: string;
   cost: number;
   note: string;
+  /** km/L from the sheet's Cons column. Absent before script v5. */
+  cons?: number | null;
 };
 
 export type Summary = {
@@ -29,7 +31,7 @@ export type Snapshot = {
   spreadsheetTitle: string;
   entryTab: string;
   tabs: string[];
-  columns: { date: number; category: number; cost: number; note: number };
+  columns: { date: number; category: number; cost: number; note: number; cons?: number };
   categories: Category[];
   buckets: Bucket[];
   summary: Summary;

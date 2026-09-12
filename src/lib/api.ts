@@ -5,6 +5,9 @@ export class ApiError extends Error {}
 /** The Code.gs version that first understood `remove`. */
 export const MIN_REMOVE_VERSION = 4;
 
+/** The Code.gs version that first read the Cons column and kept fuel notes as text. */
+export const MIN_CONS_VERSION = 5;
+
 export type RemoveTarget = { row: number; category: string; cost: number };
 
 export type RemoveResult = {

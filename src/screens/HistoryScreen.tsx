@@ -237,7 +237,12 @@ export default function HistoryScreen() {
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={st.amount}>{money(item.entry.cost, cur)}</Text>
-                <Text style={st.rowNum}>row {item.entry.row}</Text>
+                <Text style={st.rowNum}>
+                  {typeof item.entry.cons === 'number'
+                    ? `${item.entry.cons.toFixed(1)} km/L · `
+                    : ''}
+                  row {item.entry.row}
+                </Text>
               </View>
             </Pressable>
           )
